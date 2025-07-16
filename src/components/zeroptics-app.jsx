@@ -403,7 +403,7 @@ export default function ZeropticsApp() {
         className="fixed bottom-4 left-1/2 transform -translate-x-1/2 text-gray-400 hover:text-white text-xs bg-black bg-opacity-60 px-3 py-1 rounded shadow animate-pulse hover:animate-none"
         style={{ zIndex: 50 }}
       >
-        Powered by Tesseract
+        Zeroptics v1.0.0 | Powered by Tesseract
       </a>
       {/* Modal: About Zeroptics */}
       {showAbout && (
@@ -450,7 +450,7 @@ export default function ZeropticsApp() {
               ) : (
                 <>
                   <textarea
-                    className="w-full min-h-[380px] max-h-[60vh] bg-black text-green-300 border border-green-700 rounded p-2 font-mono text-sm resize-vertical focus:outline-none focus:ring-2 focus:ring-green-600 overflow-auto"
+                    className="w-full min-h-[380px] max-h-[60vh] bg-black text-green-300 border border-green-700 rounded p-2 font-mono text-base resize-vertical focus:outline-none focus:ring-2 focus:ring-green-600 overflow-auto"
                     value={editableOcrText}
                     onChange={e => setEditableOcrText(e.target.value)}
                     style={{ maxHeight: '60vh' }}
