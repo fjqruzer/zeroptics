@@ -4,6 +4,42 @@ import { useState, useRef, useEffect } from "react"
 import { Upload, Camera } from "lucide-react"
 import { recognizeTextFromFile } from "@/services/ocrService"
 import jsPDF from "jspdf"
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf"
+pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js"
+import Typo from "typo-js"
+
+// Helper: Convert PDF file to image (first page)
+async function pdfToImage(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const page = await pdf.getPage(1);
+  const viewport = page.getViewport({ scale: 2 });
+  const canvas = document.createElement("canvas");
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  const context = canvas.getContext("2d");
+  await page.render({ canvasContext: context, viewport }).promise;
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => {
+      resolve(blob);
+    }, "image/png");
+  });
+}
+
+// Helper: Autocorrect text using Typo.js
+const dictionary = new Typo("en_US");
+function autocorrectText(text) {
+  return text.split(/(\s+)/).map(word => {
+    // Only check words (not whitespace)
+    if (/^\w+$/.test(word) && !dictionary.check(word)) {
+      const suggestions = dictionary.suggest(word);
+      if (suggestions && suggestions.length > 0) {
+        return suggestions[0];
+      }
+    }
+    return word;
+  }).join("");
+}
 
 export default function ZeropticsApp() {
   const [isHovered, setIsHovered] = useState(false)
@@ -18,12 +54,13 @@ export default function ZeropticsApp() {
   const [cameraStream, setCameraStream] = useState(null)
   const videoRef = useRef(null)
   const [capturedImage, setCapturedImage] = useState(null)
-  const [facingMode, setFacingMode] = useState("environment") // NEW: camera facing mode
+  const [facingMode, setFacingMode] = useState("environment") 
   const [scannedHistory, setScannedHistory] = useState([])
   const [editableOcrText, setEditableOcrText] = useState("")
   const [historyTabPos, setHistoryTabPos] = useState({ x: 40, y: 40 })
   const [dragging, setDragging] = useState(false)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const textareaRef = useRef(null);
 
 
   useEffect(() => {
@@ -89,15 +126,22 @@ export default function ZeropticsApp() {
         setShowOcrModal(true)
         let lastText = ""
         for (let i = 0; i < files.length; i++) {
-          const file = files[i]
+          let file = files[i]
+          let isPdf = file.type === "application/pdf" || file.name.endsWith(".pdf")
           try {
+            if (isPdf) {
+              // Convert PDF to image
+              file = await pdfToImage(file)
+            }
             const text = await recognizeTextFromFile(file, (m) => {
               if (m.status === "recognizing text" && m.progress) {
                 setOcrProgress(Math.round(m.progress * 100))
               }
             })
-            handleOcrComplete(text)
-            lastText = text
+            // Autocorrect OCR result
+            const corrected = autocorrectText(text)
+            handleOcrComplete(corrected)
+            lastText = corrected
           } catch (err) {
             handleOcrComplete("Error: " + err.message)
             lastText = "Error: " + err.message
@@ -234,6 +278,13 @@ export default function ZeropticsApp() {
     }
   }, [dragging])
 
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+    }
+  }, [editableOcrText, ocrLoading]);
+
   return (
     <div className="min-h-screen bg-black flex items-center justify-center">
       <div className="text-center">
@@ -346,7 +397,7 @@ export default function ZeropticsApp() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 transition-opacity">
           <div
             ref={modalRef}
-            className="bg-[#18181b] border border-gray-700 rounded-lg shadow-lg p-6 min-w-[320px] max-w-xs text-green-400 font-mono text-sm relative animate-fade-in"
+            className="bg-[#18181b] border border-gray-700 rounded-lg shadow-lg p-6 min-w-[320px] max-w-xs text-green-400 font-mono text-sm relative animate-fade-in w-full h-auto sm:w-auto sm:h-auto sm:max-w-xs sm:rounded-lg sm:min-w-[320px] sm:max-h-[90vh] sm:p-6 fixed sm:static inset-0 sm:inset-auto flex flex-col justify-center overflow-visible"
             style={{ boxShadow: "0 4px 32px 0 #000a" }}
           >
             <div className="mb-2 text-green-500">$ Zeroptics --about</div>
@@ -354,7 +405,7 @@ export default function ZeropticsApp() {
               Zeroptics is a lightweight OCR app by Zero One that converts images to text using Tesseract.\nFast, accurate, and built for clarity.
             </div>
             <button
-              className="absolute top-2 right-2 text-gray-500 hover:text-green-400 text-lg focus:outline-none"
+              className="absolute top-2 right-2 text-gray-500 hover:text-green-400 text-lg focus:outline-none z-10"
               onClick={() => setShowAbout(false)}
               aria-label="Close"
             >
@@ -367,11 +418,11 @@ export default function ZeropticsApp() {
       {showOcrModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 transition-opacity">
           <div
-            className="bg-[#18181b] border border-gray-700 rounded-lg shadow-lg p-6 min-w-[320px] max-w-lg w-full sm:w-auto text-green-400 font-mono text-sm relative animate-fade-in flex flex-col"
-            style={{ boxShadow: "0 4px 32px 0 #000a", maxHeight: "90vh" }}
+            className="bg-[#18181b] border border-gray-700 rounded-lg shadow-lg p-6 min-w-[320px] max-w-lg w-full sm:w-auto text-green-400 font-mono text-sm relative animate-fade-in flex flex-col sm:max-w-lg sm:rounded-lg sm:p-6 fixed sm:static inset-0 sm:inset-auto justify-center overflow-visible min-h-[200px] max-h-[90vh]"
+            style={{ boxShadow: "0 4px 32px 0 #000a" }}
           >
             <div className="mb-2 text-green-500">$ Zeroptics --ocr-result</div>
-            <div className="whitespace-pre-line text-green-300 min-h-[80px] overflow-auto" style={{ maxHeight: "50vh" }}>
+            <div className="whitespace-pre-line text-green-300 min-h-[80px] overflow-auto" style={{ maxHeight: "60vh" }}>
               {ocrLoading ? (
                 <>
                   <div>Recognizing text...</div>
@@ -385,10 +436,10 @@ export default function ZeropticsApp() {
                 </>
               ) : (
                 <textarea
-                  className="w-full min-h-[80px] max-h-60 bg-black text-green-300 border border-green-700 rounded p-2 font-mono text-sm resize-vertical focus:outline-none focus:ring-2 focus:ring-green-600"
+                  ref={textareaRef}
+                  className="w-full bg-black text-green-300 border border-green-700 rounded p-2 font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green-600"
                   value={editableOcrText}
                   onChange={e => setEditableOcrText(e.target.value)}
-                  style={{ maxHeight: "50vh" }}
                   disabled={ocrLoading}
                 />
               )}
@@ -403,7 +454,7 @@ export default function ZeropticsApp() {
               </button>
             )}
             <button
-              className="absolute top-2 right-2 text-gray-500 hover:text-green-400 text-lg focus:outline-none"
+              className="absolute top-2 right-2 text-gray-500 hover:text-green-400 text-lg focus:outline-none z-10"
               onClick={() => setShowOcrModal(false)}
               aria-label="Close"
             >
@@ -416,7 +467,7 @@ export default function ZeropticsApp() {
       {showCameraModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 transition-opacity">
           <div
-            className="bg-[#18181b] border border-green-700 rounded-lg shadow-lg p-6 min-w-[320px] max-w-lg w-full sm:w-auto text-green-400 font-mono text-sm relative animate-fade-in flex flex-col items-center"
+            className="bg-[#18181b] border border-green-700 rounded-lg shadow-lg p-6 min-w-[320px] max-w-lg w-full sm:w-auto text-green-400 font-mono text-sm relative animate-fade-in flex flex-col items-center w-full h-full sm:h-auto sm:w-auto sm:max-w-lg sm:rounded-lg sm:p-6 fixed sm:static inset-0 sm:inset-auto justify-center overflow-visible"
             style={{ boxShadow: "0 4px 32px 0 #000a", maxHeight: "90vh" }}
           >
             <div className="mb-2 text-green-500 w-full">$ Zeroptics --camera</div>
@@ -480,7 +531,7 @@ export default function ZeropticsApp() {
               </>
             )}
             <button
-              className="absolute top-2 right-2 text-gray-500 hover:text-green-400 text-lg focus:outline-none"
+              className="absolute top-2 right-2 text-gray-500 hover:text-green-400 text-lg focus:outline-none z-10"
               onClick={() => setShowCameraModal(false)}
               aria-label="Close"
             >
@@ -491,7 +542,7 @@ export default function ZeropticsApp() {
       )}
       {/* Floating, moveable scanned history tab */}
       <div
-        className="fixed z-50 bg-[#18181b] border border-green-700 rounded-lg shadow-lg p-2 text-green-300 font-mono text-xs cursor-move select-none"
+        className="fixed z-50 bg-[#18181b] border border-green-700 rounded-lg shadow-lg p-2 text-green-300 font-mono text-xs cursor-move select-none opacity-50 hover:opacity-100 transition-opacity duration-300"
         style={{ left: historyTabPos.x, top: historyTabPos.y, minWidth: 180, maxWidth: 260, maxHeight: 320, overflowY: 'auto', boxShadow: '0 4px 32px 0 #000a' }}
         onMouseDown={handleTabMouseDown}
         onTouchStart={handleTabMouseDown}
