@@ -24,3 +24,14 @@ body {
   color: var(--foreground);
   font-family: var(--font-montserrat), Arial, Helvetica, sans-serif;
 }
+
+@media (max-width: 768px) {
+  html, body {
+    overflow: hidden !important;
+    overscroll-behavior: none;
+    touch-action: none;
+    position: fixed;
+    width: 100vw;
+    height: 100vh;
+  }
+}
