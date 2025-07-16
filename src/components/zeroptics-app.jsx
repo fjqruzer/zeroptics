@@ -18,6 +18,7 @@ export default function ZeropticsApp() {
   const [cameraStream, setCameraStream] = useState(null)
   const videoRef = useRef(null)
   const [capturedImage, setCapturedImage] = useState(null)
+  const [facingMode, setFacingMode] = useState("environment") // NEW: camera facing mode
 
 
   useEffect(() => {
@@ -87,30 +88,36 @@ export default function ZeropticsApp() {
   }
 
   const handleUseCamera = () => {
-    navigator.mediaDevices
-      .getUserMedia({ video: true })
-      .then((stream) => {
-        setShowCameraModal(true)
-        setCameraStream(stream)
-        setCapturedImage(null)
-        setOcrResult("")
-        setOcrLoading(false)
-        setOcrProgress(0)
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-        }
-      })
-      .catch((err) => {
-        console.error("Camera access denied:", err)
-      })
+    setCapturedImage(null)
+    setOcrResult("")
+    setOcrLoading(false)
+    setOcrProgress(0)
+    setShowCameraModal(true)
   }
 
 
+  // Open camera stream when showCameraModal or facingMode changes
   useEffect(() => {
-    if (showCameraModal && videoRef.current && cameraStream) {
-      videoRef.current.srcObject = cameraStream
+    if (showCameraModal) {
+      navigator.mediaDevices
+        .getUserMedia({ video: { facingMode } })
+        .then((stream) => {
+          setCameraStream(stream)
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream
+          }
+        })
+        .catch((err) => {
+          console.error("Camera access denied:", err)
+        })
     }
-  }, [showCameraModal, cameraStream])
+    return () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((track) => track.stop())
+      }
+    }
+    // eslint-disable-next-line
+  }, [showCameraModal, facingMode])
 
   const handleCapture = () => {
     if (!videoRef.current) return
@@ -344,6 +351,12 @@ export default function ZeropticsApp() {
                   className="rounded border border-green-700 bg-black mb-4 w-full max-h-64 object-contain"
                   style={{ background: "#000", minHeight: "180px" }}
                 />
+                <button
+                  className="bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded shadow transition-all duration-200 font-mono text-base w-full mb-2 border border-gray-500"
+                  onClick={() => setFacingMode((prev) => (prev === "user" ? "environment" : "user"))}
+                >
+                  Flip Camera
+                </button>
                 <button
                   className="bg-green-700 hover:bg-green-800 text-white px-4 py-2 rounded shadow transition-all duration-200 font-mono text-base w-full mb-2 border border-green-500"
                   onClick={handleCapture}
