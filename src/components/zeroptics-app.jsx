@@ -435,7 +435,7 @@ export default function ZeropticsApp() {
             style={{ boxShadow: "0 4px 32px 0 #000a" }}
           >
             <div className="mb-2 text-green-500">$ Zeroptics --ocr-result</div>
-            <div className="whitespace-pre-line text-green-300 min-h-[80px] overflow-auto" style={{ maxHeight: "60vh" }}>
+            <div className="whitespace-pre-line text-green-300 min-h-[100px] overflow-auto" style={{ maxHeight: "100vh" }}>
               {ocrLoading ? (
                 <>
                   <div>Recognizing text...</div>
@@ -450,10 +450,10 @@ export default function ZeropticsApp() {
               ) : (
                 <>
                   <textarea
-                    className="w-full min-h-[100px] max-h-60 bg-black text-green-300 border border-green-700 rounded p-2 font-mono text-sm resize-vertical focus:outline-none focus:ring-2 focus:ring-green-600 overflow-hidden md:overflow-auto"
+                    className="w-full min-h-[380px] max-h-[60vh] bg-black text-green-300 border border-green-700 rounded p-2 font-mono text-sm resize-vertical focus:outline-none focus:ring-2 focus:ring-green-600 overflow-auto"
                     value={editableOcrText}
                     onChange={e => setEditableOcrText(e.target.value)}
-                    style={{ maxHeight: 'calc(50vh - 20px)' }}
+                    style={{ maxHeight: '60vh' }}
                     disabled={ocrLoading}
                   />
                 </>
