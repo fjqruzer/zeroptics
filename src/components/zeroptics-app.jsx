@@ -67,6 +67,9 @@ export default function ZeropticsApp() {
   // No auto-resize refs needed
   const [dictLoading, setDictLoading] = useState(true);
   const [dictionaryState, setDictionary] = useState(null);
+  // Add a new state to track the type of the current OCR source
+  const [ocrSourceType, setOcrSourceType] = useState(null); // 'image' | 'pdf' | null
+  const [ocrPdfPageCount, setOcrPdfPageCount] = useState(0);
 
 
   useEffect(() => {
@@ -124,15 +127,19 @@ export default function ZeropticsApp() {
     }, 400) // 400ms timeout
   }
 
-  const handleOcrComplete = (text, image = null) => {
+  const handleOcrComplete = (text, image = null, type = 'image', pageCount = 0) => {
     const entry = {
       id: Date.now(),
       text,
       image,
       date: new Date().toLocaleString(),
+      type, // 'image' or 'pdf'
+      pageCount, // for pdfs
     }
     setScannedHistory((prev) => [entry, ...prev.slice(0, 19)]) // keep max 20
     setEditableOcrText(text)
+    setOcrSourceType(type)
+    setOcrPdfPageCount(pageCount)
   }
 
   const handleUploadFile = () => {
@@ -163,10 +170,17 @@ export default function ZeropticsApp() {
                 });
                 // Autocorrect OCR result
                 const corrected = dictLoading ? text : autocorrectText(text, dictionaryState);
-                handleOcrComplete(corrected);
                 pdfText += corrected + (j < images.length - 1 ? "\n\n" : "");
               }
               lastText = pdfText;
+              // If single-page PDF, treat as image (show preview)
+              if (images.length === 1) {
+                const imgUrl = URL.createObjectURL(images[0]);
+                handleOcrComplete(pdfText, imgUrl, 'image', 1);
+              } else {
+                // Multi-page PDF: no preview, one history entry
+                handleOcrComplete(pdfText, null, 'pdf', images.length);
+              }
             } else {
               const text = await recognizeTextFromFile(file, (m) => {
                 if (m.status === "recognizing text" && m.progress) {
@@ -175,11 +189,12 @@ export default function ZeropticsApp() {
               })
               // Autocorrect OCR result
               const corrected = dictLoading ? text : autocorrectText(text, dictionaryState)
-              handleOcrComplete(corrected)
+              const imgUrl = URL.createObjectURL(file)
+              handleOcrComplete(corrected, imgUrl, 'image', 1)
               lastText = corrected
             }
           } catch (err) {
-            handleOcrComplete("Error: " + err.message)
+            handleOcrComplete("Error: " + err.message, null, 'error', 0)
             lastText = "Error: " + err.message
           }
         }
@@ -244,7 +259,7 @@ export default function ZeropticsApp() {
             }
           })
           setOcrResult(text)
-          handleOcrComplete(dictLoading ? text : autocorrectText(text, dictionaryState), imgUrl)
+          handleOcrComplete(dictLoading ? text : autocorrectText(text, dictionaryState), imgUrl, 'image', 1)
         } catch (err) {
           setOcrResult("Error: " + err.message)
           setEditableOcrText("Error: " + err.message)
@@ -272,6 +287,8 @@ export default function ZeropticsApp() {
     setOcrResult(entry.text)
     setEditableOcrText(entry.text)
     setShowOcrModal(true)
+    setOcrSourceType(entry.type)
+    setOcrPdfPageCount(entry.pageCount || 0)
   }
 
   // Drag handlers for history tab
@@ -453,6 +470,11 @@ export default function ZeropticsApp() {
             style={{ boxShadow: "0 4px 32px 0 #000a" }}
           >
             <div className="mb-2 text-green-500">$ Zeroptics --ocr-result</div>
+            {ocrSourceType === 'pdf' && ocrPdfPageCount > 1 && (
+              <div className="mb-2 p-2 bg-yellow-900 bg-opacity-40 text-yellow-300 rounded text-xs">
+                This is a multi-page PDF ({ocrPdfPageCount} pages). Preview is not available. Please export to PDF for best results.
+              </div>
+            )}
             <div className="whitespace-pre-line text-green-300 min-h-[100px] overflow-auto" style={{ maxHeight: "100vh" }}>
               {ocrLoading ? (
                 <>
@@ -591,12 +613,15 @@ export default function ZeropticsApp() {
               onClick={e => { e.stopPropagation(); handleHistoryItemClick(entry) }}
               style={{ wordBreak: 'break-all' }}
             >
-              {entry.image && (
+              {entry.type === 'image' && entry.image && (
                 <img src={entry.image} alt="thumb" className="w-6 h-6 object-cover rounded border border-green-700" />
               )}
               <div className="flex-1">
                 <div className="truncate max-w-[120px]">{entry.text.slice(0, 30) || 'No text'}</div>
                 <div className="text-gray-500 text-[10px]">{entry.date}</div>
+                {entry.type === 'pdf' && entry.pageCount > 1 && (
+                  <div className="text-yellow-400 text-[10px]">PDF ({entry.pageCount} pages)</div>
+                )}
               </div>
             </div>
           ))
