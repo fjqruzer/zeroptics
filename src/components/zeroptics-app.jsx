@@ -8,22 +8,26 @@ import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf"
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js"
 import Typo from "typo-js"
 
-// Helper: Convert PDF file to image (first page)
-async function pdfToImage(file) {
+// Helper: Convert PDF file to images (all pages)
+async function pdfToImages(file) {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  const page = await pdf.getPage(1);
-  const viewport = page.getViewport({ scale: 2 });
-  const canvas = document.createElement("canvas");
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  const context = canvas.getContext("2d");
-  await page.render({ canvasContext: context, viewport }).promise;
-  return new Promise((resolve) => {
-    canvas.toBlob((blob) => {
-      resolve(blob);
-    }, "image/png");
-  });
+  const images = [];
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale: 2 });
+    const canvas = document.createElement("canvas");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const context = canvas.getContext("2d");
+    await page.render({ canvasContext: context, viewport }).promise;
+    // Convert canvas to blob
+    const blob = await new Promise((resolve) => {
+      canvas.toBlob((blob) => resolve(blob), "image/png");
+    });
+    images.push(blob);
+  }
+  return images;
 }
 
 // Helper: Autocorrect text using Typo.js
@@ -148,18 +152,32 @@ export default function ZeropticsApp() {
           let isPdf = file.type === "application/pdf" || file.name.endsWith(".pdf")
           try {
             if (isPdf) {
-              // Convert PDF to image
-              file = await pdfToImage(file)
-            }
-            const text = await recognizeTextFromFile(file, (m) => {
-              if (m.status === "recognizing text" && m.progress) {
-                setOcrProgress(Math.round(m.progress * 100))
+              // Convert PDF to images (all pages)
+              const images = await pdfToImages(file);
+              let pdfText = "";
+              for (let j = 0; j < images.length; j++) {
+                const text = await recognizeTextFromFile(images[j], (m) => {
+                  if (m.status === "recognizing text" && m.progress) {
+                    setOcrProgress(Math.round(m.progress * 100))
+                  }
+                });
+                // Autocorrect OCR result
+                const corrected = dictLoading ? text : autocorrectText(text, dictionaryState);
+                handleOcrComplete(corrected);
+                pdfText += corrected + (j < images.length - 1 ? "\n\n" : "");
               }
-            })
-            // Autocorrect OCR result
-            const corrected = dictLoading ? text : autocorrectText(text, dictionaryState)
-            handleOcrComplete(corrected)
-            lastText = corrected
+              lastText = pdfText;
+            } else {
+              const text = await recognizeTextFromFile(file, (m) => {
+                if (m.status === "recognizing text" && m.progress) {
+                  setOcrProgress(Math.round(m.progress * 100))
+                }
+              })
+              // Autocorrect OCR result
+              const corrected = dictLoading ? text : autocorrectText(text, dictionaryState)
+              handleOcrComplete(corrected)
+              lastText = corrected
+            }
           } catch (err) {
             handleOcrComplete("Error: " + err.message)
             lastText = "Error: " + err.message
@@ -403,7 +421,7 @@ export default function ZeropticsApp() {
         className="fixed bottom-4 left-1/2 transform -translate-x-1/2 text-gray-400 hover:text-white text-xs bg-black bg-opacity-60 px-3 py-1 rounded shadow animate-pulse hover:animate-none"
         style={{ zIndex: 50 }}
       >
-        Zeroptics v1.0.0 | Powered by Tesseract
+        Powered by Tesseract
       </a>
       {/* Modal: About Zeroptics */}
       {showAbout && (
