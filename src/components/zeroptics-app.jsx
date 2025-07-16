@@ -19,6 +19,11 @@ export default function ZeropticsApp() {
   const videoRef = useRef(null)
   const [capturedImage, setCapturedImage] = useState(null)
   const [facingMode, setFacingMode] = useState("environment") // NEW: camera facing mode
+  const [scannedHistory, setScannedHistory] = useState([])
+  const [editableOcrText, setEditableOcrText] = useState("")
+  const [historyTabPos, setHistoryTabPos] = useState({ x: 40, y: 40 })
+  const [dragging, setDragging] = useState(false)
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
 
 
   useEffect(() => {
@@ -60,28 +65,47 @@ export default function ZeropticsApp() {
     }, 400) // 400ms timeout
   }
 
+  const handleOcrComplete = (text, image = null) => {
+    const entry = {
+      id: Date.now(),
+      text,
+      image,
+      date: new Date().toLocaleString(),
+    }
+    setScannedHistory((prev) => [entry, ...prev.slice(0, 19)]) // keep max 20
+    setEditableOcrText(text)
+  }
+
   const handleUploadFile = () => {
     const input = document.createElement("input")
     input.type = "file"
     input.accept = "image/*,.pdf"
+    input.multiple = true
     input.onchange = async (e) => {
-      const file = e.target.files?.[0]
-      if (file) {
+      const files = Array.from(e.target.files || [])
+      if (files.length > 0) {
         setOcrLoading(true)
         setOcrProgress(0)
         setShowOcrModal(true)
-        try {
-          const text = await recognizeTextFromFile(file, (m) => {
-            if (m.status === "recognizing text" && m.progress) {
-              setOcrProgress(Math.round(m.progress * 100))
-            }
-          })
-          setOcrResult(text)
-        } catch (err) {
-          setOcrResult("Error: " + err.message)
-        } finally {
-          setOcrLoading(false)
+        let lastText = ""
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i]
+          try {
+            const text = await recognizeTextFromFile(file, (m) => {
+              if (m.status === "recognizing text" && m.progress) {
+                setOcrProgress(Math.round(m.progress * 100))
+              }
+            })
+            handleOcrComplete(text)
+            lastText = text
+          } catch (err) {
+            handleOcrComplete("Error: " + err.message)
+            lastText = "Error: " + err.message
+          }
         }
+        setOcrResult(lastText)
+        setEditableOcrText(lastText)
+        setOcrLoading(false)
       }
     }
     input.click()
@@ -129,7 +153,8 @@ export default function ZeropticsApp() {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
     canvas.toBlob(async (blob) => {
       if (blob) {
-        setCapturedImage(URL.createObjectURL(blob))
+        const imgUrl = URL.createObjectURL(blob)
+        setCapturedImage(imgUrl)
         setOcrLoading(true)
         setOcrProgress(0)
         try {
@@ -139,8 +164,10 @@ export default function ZeropticsApp() {
             }
           })
           setOcrResult(text)
+          handleOcrComplete(text, imgUrl)
         } catch (err) {
           setOcrResult("Error: " + err.message)
+          setEditableOcrText("Error: " + err.message)
         } finally {
           setOcrLoading(false)
         }
@@ -156,11 +183,56 @@ export default function ZeropticsApp() {
   // Export OCR result as PDF
   const handleExportPdf = () => {
     const doc = new jsPDF()
-
-    const lines = doc.splitTextToSize(ocrResult, 180)
+    const lines = doc.splitTextToSize(editableOcrText, 180)
     doc.text(lines, 10, 10)
     doc.save("ocr-result.pdf")
   }
+
+  const handleHistoryItemClick = (entry) => {
+    setOcrResult(entry.text)
+    setEditableOcrText(entry.text)
+    setShowOcrModal(true)
+  }
+
+  // Drag handlers for history tab
+  const handleTabMouseDown = (e) => {
+    setDragging(true)
+    const startX = e.type === "touchstart" ? e.touches[0].clientX : e.clientX
+    const startY = e.type === "touchstart" ? e.touches[0].clientY : e.clientY
+    setDragOffset({
+      x: startX - historyTabPos.x,
+      y: startY - historyTabPos.y,
+    })
+  }
+  const handleTabMouseMove = (e) => {
+    if (!dragging) return
+    const clientX = e.type === "touchmove" ? e.touches[0].clientX : e.clientX
+    const clientY = e.type === "touchmove" ? e.touches[0].clientY : e.clientY
+    setHistoryTabPos({
+      x: clientX - dragOffset.x,
+      y: clientY - dragOffset.y,
+    })
+  }
+  const handleTabMouseUp = () => setDragging(false)
+  useEffect(() => {
+    if (dragging) {
+      window.addEventListener("mousemove", handleTabMouseMove)
+      window.addEventListener("mouseup", handleTabMouseUp)
+      window.addEventListener("touchmove", handleTabMouseMove)
+      window.addEventListener("touchend", handleTabMouseUp)
+    } else {
+      window.removeEventListener("mousemove", handleTabMouseMove)
+      window.removeEventListener("mouseup", handleTabMouseUp)
+      window.removeEventListener("touchmove", handleTabMouseMove)
+      window.removeEventListener("touchend", handleTabMouseUp)
+    }
+    return () => {
+      window.removeEventListener("mousemove", handleTabMouseMove)
+      window.removeEventListener("mouseup", handleTabMouseUp)
+      window.removeEventListener("touchmove", handleTabMouseMove)
+      window.removeEventListener("touchend", handleTabMouseUp)
+    }
+  }, [dragging])
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center">
@@ -312,11 +384,17 @@ export default function ZeropticsApp() {
                   <div className="text-xs text-gray-400">{ocrProgress}%</div>
                 </>
               ) : (
-                ocrResult || "No text found."
+                <textarea
+                  className="w-full min-h-[80px] max-h-60 bg-black text-green-300 border border-green-700 rounded p-2 font-mono text-sm resize-vertical focus:outline-none focus:ring-2 focus:ring-green-600"
+                  value={editableOcrText}
+                  onChange={e => setEditableOcrText(e.target.value)}
+                  style={{ maxHeight: "50vh" }}
+                  disabled={ocrLoading}
+                />
               )}
             </div>
             {/* Export as PDF button */}
-            {!ocrLoading && ocrResult && (
+            {!ocrLoading && editableOcrText && (
               <button
                 className="mt-4 bg-green-700 hover:bg-green-800 text-white px-4 py-2 rounded shadow transition-all duration-200"
                 onClick={handleExportPdf}
@@ -411,6 +489,35 @@ export default function ZeropticsApp() {
           </div>
         </div>
       )}
+      {/* Floating, moveable scanned history tab */}
+      <div
+        className="fixed z-50 bg-[#18181b] border border-green-700 rounded-lg shadow-lg p-2 text-green-300 font-mono text-xs cursor-move select-none"
+        style={{ left: historyTabPos.x, top: historyTabPos.y, minWidth: 180, maxWidth: 260, maxHeight: 320, overflowY: 'auto', boxShadow: '0 4px 32px 0 #000a' }}
+        onMouseDown={handleTabMouseDown}
+        onTouchStart={handleTabMouseDown}
+      >
+        <div className="font-bold text-green-500 mb-1">History</div>
+        {scannedHistory.length === 0 ? (
+          <div className="text-gray-400">No scans yet.</div>
+        ) : (
+          scannedHistory.map(entry => (
+            <div
+              key={entry.id}
+              className="flex items-center gap-2 p-1 rounded hover:bg-green-900 cursor-pointer mb-1"
+              onClick={e => { e.stopPropagation(); handleHistoryItemClick(entry) }}
+              style={{ wordBreak: 'break-all' }}
+            >
+              {entry.image && (
+                <img src={entry.image} alt="thumb" className="w-6 h-6 object-cover rounded border border-green-700" />
+              )}
+              <div className="flex-1">
+                <div className="truncate max-w-[120px]">{entry.text.slice(0, 30) || 'No text'}</div>
+                <div className="text-gray-500 text-[10px]">{entry.date}</div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   )
 }
