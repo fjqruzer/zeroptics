@@ -468,10 +468,10 @@ export default function ZeropticsApp() {
               ) : (
                 <>
                   <textarea
-                    className="w-full min-h-[380px] max-h-[60vh] bg-black text-green-300 border border-green-700 rounded p-2 font-mono text-base resize-vertical focus:outline-none focus:ring-2 focus:ring-green-600 overflow-auto"
+                    className="w-full min-h-[380px] max-h-[60vh] bg-black text-green-300 border border-green-700 rounded p-2 font-mono resize-vertical focus:outline-none focus:ring-2 focus:ring-green-600 overflow-auto"
                     value={editableOcrText}
                     onChange={e => setEditableOcrText(e.target.value)}
-                    style={{ maxHeight: '60vh' }}
+                    style={{ maxHeight: '60vh', fontSize: '16px' }}
                     disabled={ocrLoading}
                   />
                 </>
