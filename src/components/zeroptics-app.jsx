@@ -27,13 +27,7 @@ async function pdfToImage(file) {
 }
 
 // Helper: Autocorrect text using Typo.js
-const [dictionary, setDictionary] = [null, null]; // placeholder for linter
-
-// In component:
-// const [dictionary, setDictionary] = useState(null);
-// const [dictLoading, setDictLoading] = useState(true);
-
-function autocorrectText(text) {
+function autocorrectText(text, dictionaryState) {
   if (!dictionaryState) return text;
   return text.split(/(\s+)/).map(word => {
     // Only check words (not whitespace)
@@ -163,7 +157,7 @@ export default function ZeropticsApp() {
               }
             })
             // Autocorrect OCR result
-            const corrected = dictLoading ? text : autocorrectText(text)
+            const corrected = dictLoading ? text : autocorrectText(text, dictionaryState)
             handleOcrComplete(corrected)
             lastText = corrected
           } catch (err) {
@@ -232,7 +226,7 @@ export default function ZeropticsApp() {
             }
           })
           setOcrResult(text)
-          handleOcrComplete(dictLoading ? text : autocorrectText(text), imgUrl)
+          handleOcrComplete(dictLoading ? text : autocorrectText(text, dictionaryState), imgUrl)
         } catch (err) {
           setOcrResult("Error: " + err.message)
           setEditableOcrText("Error: " + err.message)
