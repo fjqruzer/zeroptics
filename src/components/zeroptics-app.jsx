@@ -278,8 +278,19 @@ export default function ZeropticsApp() {
   // Export OCR result as PDF
   const handleExportPdf = () => {
     const doc = new jsPDF()
-    const lines = doc.splitTextToSize(editableOcrText, 180)
-    doc.text(lines, 10, 10)
+    // Multi-page PDF export: split by page
+    if (ocrSourceType === 'pdf' && ocrPdfPageCount > 1) {
+      const pageTexts = editableOcrText.split(/\n\n/)
+      pageTexts.forEach((pageText, idx) => {
+        if (idx > 0) doc.addPage()
+        const lines = doc.splitTextToSize(pageText.trim(), 180)
+        doc.text(lines, 10, 10)
+      })
+    } else {
+      // Single page/image
+      const lines = doc.splitTextToSize(editableOcrText, 180)
+      doc.text(lines, 10, 10)
+    }
     doc.save("ocr-result.pdf")
   }
 
