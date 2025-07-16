@@ -27,12 +27,18 @@ async function pdfToImage(file) {
 }
 
 // Helper: Autocorrect text using Typo.js
-const dictionary = new Typo("en_US");
+const [dictionary, setDictionary] = [null, null]; // placeholder for linter
+
+// In component:
+// const [dictionary, setDictionary] = useState(null);
+// const [dictLoading, setDictLoading] = useState(true);
+
 function autocorrectText(text) {
+  if (!dictionaryState) return text;
   return text.split(/(\s+)/).map(word => {
     // Only check words (not whitespace)
-    if (/^\w+$/.test(word) && !dictionary.check(word)) {
-      const suggestions = dictionary.suggest(word);
+    if (/^\w+$/.test(word) && !dictionaryState.check(word)) {
+      const suggestions = dictionaryState.suggest(word);
       if (suggestions && suggestions.length > 0) {
         return suggestions[0];
       }
@@ -60,8 +66,26 @@ export default function ZeropticsApp() {
   const [historyTabPos, setHistoryTabPos] = useState({ x: 40, y: 40 })
   const [dragging, setDragging] = useState(false)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
-  const textareaRef = useRef(null);
+  // No auto-resize refs needed
+  const [dictLoading, setDictLoading] = useState(true);
+  const [dictionaryState, setDictionary] = useState(null);
 
+
+  useEffect(() => {
+    async function loadDictionary() {
+      try {
+        const aff = await fetch('/dictionaries/en_US.aff').then(res => res.text());
+        const dic = await fetch('/dictionaries/en_US.dic').then(res => res.text());
+        const TypoModule = (await import('typo-js')).default;
+        setDictionary(new TypoModule("en_US", aff, dic, { platform: 'browser' }));
+      } catch (e) {
+        setDictionary(null);
+      } finally {
+        setDictLoading(false);
+      }
+    }
+    loadDictionary();
+  }, []);
 
   useEffect(() => {
     if (!showCameraModal && cameraStream) {
@@ -139,7 +163,7 @@ export default function ZeropticsApp() {
               }
             })
             // Autocorrect OCR result
-            const corrected = autocorrectText(text)
+            const corrected = dictLoading ? text : autocorrectText(text)
             handleOcrComplete(corrected)
             lastText = corrected
           } catch (err) {
@@ -208,7 +232,7 @@ export default function ZeropticsApp() {
             }
           })
           setOcrResult(text)
-          handleOcrComplete(text, imgUrl)
+          handleOcrComplete(dictLoading ? text : autocorrectText(text), imgUrl)
         } catch (err) {
           setOcrResult("Error: " + err.message)
           setEditableOcrText("Error: " + err.message)
@@ -278,12 +302,7 @@ export default function ZeropticsApp() {
     }
   }, [dragging])
 
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
-    }
-  }, [editableOcrText, ocrLoading]);
+  // No auto-resize effect needed
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center">
@@ -435,13 +454,15 @@ export default function ZeropticsApp() {
                   <div className="text-xs text-gray-400">{ocrProgress}%</div>
                 </>
               ) : (
-                <textarea
-                  ref={textareaRef}
-                  className="w-full bg-black text-green-300 border border-green-700 rounded p-2 font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green-600"
-                  value={editableOcrText}
-                  onChange={e => setEditableOcrText(e.target.value)}
-                  disabled={ocrLoading}
-                />
+                <>
+                  <textarea
+                    className="w-full min-h-[100px] max-h-60 bg-black text-green-300 border border-green-700 rounded p-2 font-mono text-sm resize-vertical focus:outline-none focus:ring-2 focus:ring-green-600 overflow-hidden md:overflow-auto"
+                    value={editableOcrText}
+                    onChange={e => setEditableOcrText(e.target.value)}
+                    style={{ maxHeight: 'calc(50vh - 20px)' }}
+                    disabled={ocrLoading}
+                  />
+                </>
               )}
             </div>
             {/* Export as PDF button */}
